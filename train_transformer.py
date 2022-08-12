@@ -8,6 +8,7 @@ import gensim as gsm
 from tqdm import tqdm
 from torch.utils.data import TensorDataset, DataLoader, Dataset
 from sklearn.model_selection import train_test_split
+from transformers import AutoTokenizer, AutoModel
 import random
 import utils
 
@@ -21,77 +22,86 @@ torch.manual_seed(SEED)
 
 class TweetDataset(Dataset):
 
-    def __init__(self, tweets, targets, tokenizer, max_len, e2v, w2v):
+    def __init__(self, tweets, targets, tokenizer, max_len):
         self.tweets = tweets
         self.targets = targets
         self.tokenizer = tokenizer
         self.max_len = max_len
-        self.e2v = e2v
-        self.w2v = w2v
 
     def __len__(self):
         return len(self.tweets)
 
     def __getitem__(self, item):
-        tweet = str(self.tweets[item])
+        tweets = utils.remove_emojis(str(self.tweets[item]))
         target = self.targets[item]
 
-        tokens = self.tokenizer.tokenize(tweet)
+        encoding = self.tokenizer.encode_plus(
+          tweets,
+          add_special_tokens=True,
+          max_length=self.max_len,
+          return_token_type_ids=False,
+          padding='max_length',
+          return_attention_mask=True,
+          return_tensors='pt',
+        )
 
-        seq = []
-        for t in tokens:
-            if e2v is not None and t in e2v.key_to_index:
-                seq.append(torch.from_numpy(e2v[t]))
-            elif t in w2v.key_to_index:
-                seq.append(torch.from_numpy(w2v[t]))
-
-        padding_length = self.max_len - len(seq)
-        for _ in range(padding_length):
-            seq.append(torch.zeros(300, ))
-        seq = torch.stack(seq, dim=0)
-
-        return seq, target
+        return {
+          'tweet_text': tweets,
+          'input_ids': encoding['input_ids'].flatten(),
+          'attention_mask': encoding['attention_mask'].flatten(),
+          'targets': torch.tensor(target, dtype=torch.float32)
+        }
 
 
-def create_data_loader(X, y, tokenizer, max_len, batch_size, e2v, w2v):
+def create_data_loader(X, y, tokenizer, max_len, batch_size):
     ds = TweetDataset(
-        tweets=X,
-        targets=y,
-        tokenizer=tokenizer,
-        max_len=max_len,
-        e2v=e2v,
-        w2v=w2v
+    tweets=X,
+    targets=y,
+    tokenizer=tokenizer,
+    max_len=max_len
     )
 
     return DataLoader(
-        ds,
-        batch_size=batch_size)
+    ds,
+    batch_size=batch_size)
 
 
-class BiLSTM_FFF(nn.Module):
-    def __init__(self, hidden_dim, bidirectional, embedding_dim):
-        super(BiLSTM_FFF, self).__init__()
+class BERT_BiLSTM_FFF_Cls(nn.Module):
 
+    def __init__(self, bert, hidden_dim, bidirectional):
+        super(BERT_BiLSTM_FFF_Cls, self).__init__()
+        embedding_dim = bert.config.to_dict()['hidden_size']
         self.hidden_dim = hidden_dim
-        self.bidir = bidirectional
+        self.bert = bert
+        self.bidirectional = bidirectional
+
         self.lstm = nn.LSTM(input_size=embedding_dim,
                             hidden_size=self.hidden_dim,
                             num_layers=2,
-                            bidirectional=self.bidir,
+                            bidirectional=self.bidirectional,
                             batch_first=True)
+
         self.drop = nn.Dropout(p=0.2)
 
         self.out = nn.Sequential(
-            nn.Linear(self.hidden_dim * 2, 512),  # since it's bidirectional
+            nn.Linear(self.hidden_dim * 2, 512),
             nn.ReLU(),
-            nn.Linear(512,256),
-            nn.Linear(256,3)
+            nn.Linear(512, 3)
         )
 
-    def forward(self, seq):
-        _, (out, _) = self.lstm(seq)
+    def forward(self, input_ids, attention_mask):
+        with torch.no_grad():
+            embeddings = self.bert(
+                input_ids=input_ids,
+                attention_mask=attention_mask
+            )[0]
+
+        _, (out, _) = self.lstm(embeddings)
+
+        # hidden = [n layers * n directions, batch size, emb dim]
         out = torch.cat((out[-2, :, :], out[-1, :, :]), dim=1)
         out = self.drop(out)
+
         return self.out(out)
 
 def train_epoch(
@@ -107,26 +117,30 @@ def train_epoch(
     losses = []
     correct_predictions = 0
 
-    for inputs, targets in tqdm(data_loader):
-        inputs = inputs.to(device)
-        targets = targets.to(device)
+    for d in tqdm(data_loader):
+        input_ids = d["input_ids"].to(device)
+        attention_mask = d["attention_mask"].to(device)
+        targets = d["targets"].to(device)
 
-        outputs = model(inputs)
+        outputs = model(
+                input_ids=input_ids,
+                attention_mask=attention_mask
+                )
 #         print(outputs.dtype)
         _,preds = torch.max(outputs, dim = 1)
         loss = loss_fn(outputs, targets)
 #         prediction_error += torch.sum(torch.abs(targets - outputs))
         correct_predictions += torch.sum(preds == torch.max(targets, dim = 1)[1])
-        # print(f'Iteration loss: {loss.item()}')
+#         print(f'Iteration loss: {loss.item()}')
         losses.append(loss.item())
 
         loss.backward()
         nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-
         optimizer.step()
         optimizer.zero_grad()
 
     return correct_predictions.double() / n_examples, np.mean(losses)
+    # return np.mean(losses), np.mean(losses)
 
 
 def eval_model(model, data_loader, loss_fn, device, n_examples):
@@ -136,32 +150,32 @@ def eval_model(model, data_loader, loss_fn, device, n_examples):
     correct_predictions = 0
 
     with torch.no_grad():
-        for inputs, targets in data_loader:
-            inputs = inputs.to(device)
-            targets = targets.to(device)
-            outputs = model(inputs)
+        for d in data_loader:
+            input_ids = d["input_ids"].to(device)
+            attention_mask = d["attention_mask"].to(device)
+            targets = d["targets"].to(device)
+
+            outputs = model(
+                input_ids=input_ids,
+                attention_mask=attention_mask
+            )
             _, preds = torch.max(outputs, dim=1)
-            # prediction_error += torch.sum(torch.abs(targets - outputs))
+            #             prediction_error += torch.sum(torch.abs(targets - outputs))
             loss = loss_fn(outputs, targets)
 
             correct_predictions += torch.sum(preds == torch.max(targets, dim = 1)[1])
             losses.append(loss.item())
-
     return correct_predictions.double() / n_examples, np.mean(losses)
-
-
-#     return nn.functional.cosine_similarity(output_all, target_all, dim=0), np.mean(losses)
+    # return nn.functional.cosine_similarity(output_all, target_all, dim=0), np.mean(losses)
 
 if __name__ == "__main__":
     # Reading data and pretrained embeddings
     data = pd.read_excel('Data/emoji2vec_data/emoji2vec_train.xlsx')[['content', 'label']]
     test = pd.read_excel('Data/emoji2vec_data/emoji2vec_test.xlsx')[['content', 'label']]
-    e2v_path = 'Data/emoji2vec_data/emoji2vec.bin'
-    w2v_path = 'Data/emoji2vec_data/GoogleNews-vectors-negative300.bin.gz'
-    w2v = gsm.models.KeyedVectors.load_word2vec_format(w2v_path, binary=True)
-
-    remove_emojis = True
-    e2v = gsm.models.KeyedVectors.load_word2vec_format(e2v_path, binary=True) if not remove_emojis else None
+    # e2v_path = 'Data/emoji2vec_data/emoji2vec.bin'
+    # w2v_path = 'Data/emoji2vec_data/GoogleNews-vectors-negative300.bin.gz'
+    # w2v = gsm.models.KeyedVectors.load_word2vec_format(w2v_path, binary=True)
+    # e2v = gsm.models.KeyedVectors.load_word2vec_format(e2v_path, binary=True)
 
     # Process and split into three sets
     data['cleaned_content'] = data.content.apply(utils.preprocess_apply)
@@ -172,14 +186,20 @@ if __name__ == "__main__":
     print(f'shape of train data is {X_train.shape}')
     print(f'shape of test data is {X_test.shape}')
 
+    # Load the BERT model
+
+    tokenizer = AutoTokenizer.from_pretrained('roberta-base')
+    bert = AutoModel.from_pretrained('roberta-base')
+
     # Create data loader
-    TweetTknzr = tk.TweetTokenizer(preserve_case=False, reduce_len=True, strip_handles=True)
-    MAX_LEN = 128
+    # TweetTknzr = tk.TweetTokenizer(preserve_case=False, reduce_len=True, strip_handles=True)
+
+    MAX_LEN = 256
     BATCH_SIZE = 64
 
-    train_data_loader = create_data_loader(X_train, y_train, TweetTknzr, MAX_LEN, BATCH_SIZE, e2v, w2v)
-    val_data_loader = create_data_loader(X_val, y_val, TweetTknzr, MAX_LEN, BATCH_SIZE, e2v, w2v)
-    test_data_loader = create_data_loader(X_test, y_test, TweetTknzr,  MAX_LEN, BATCH_SIZE, e2v, w2v)
+    train_data_loader = create_data_loader(X_train, y_train, tokenizer, MAX_LEN, BATCH_SIZE)
+    val_data_loader = create_data_loader(X_val, y_val, tokenizer, MAX_LEN, BATCH_SIZE)
+    test_data_loader = create_data_loader(X_test, y_test, tokenizer,  MAX_LEN, BATCH_SIZE)
     # Testing code for data loader
 
     # dataiter = iter(train_data_loader)
@@ -187,7 +207,6 @@ if __name__ == "__main__":
     # print("Sample batch shape:", sample_inputs.shape, sample_targets.shape)
 
     # Set up the training hyperparams and the model
-    embedding_dim = 300
     hidden_dim = 512
     bidirectional = True
     EPOCHS = 15
@@ -195,7 +214,7 @@ if __name__ == "__main__":
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     print("You are training on", device)
 
-    decoder = BiLSTM_FFF(hidden_dim, bidirectional, embedding_dim)
+    decoder = BERT_BiLSTM_FFF_Cls(bert, hidden_dim, bidirectional)
     loss_fn = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(decoder.parameters(), lr=lr)
     # print(decoder)
@@ -255,7 +274,7 @@ if __name__ == "__main__":
             best_accuracy = val_acc
 
     decoder.load_state_dict(torch.load('best_model_state.bin'))
-    test_acc, test_loss =eval_model(decoder, test_data_loader,loss_fn,
+    test_acc, test_loss = eval_model(decoder, test_data_loader,loss_fn,
             device,
             len(X_test))
     print(f"Best model's accuracy on test set:{test_acc}, loss {test_loss}")

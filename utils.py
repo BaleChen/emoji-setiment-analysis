@@ -64,3 +64,6 @@ def extract_emojis(text):
 def keep_only_emojis(data):
     cnt = data['content'].apply(emoji.emoji_count)
     return data[cnt >= 1]
+
+def remove_emojis(text):
+    return re.sub('[^a-z0-9<>]', '', text)
