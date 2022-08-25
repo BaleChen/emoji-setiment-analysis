@@ -33,7 +33,7 @@ class TweetDataset(Dataset):
         return len(self.tweets)
 
     def __getitem__(self, item):
-        tweet = str(self.tweets[item])
+        tweet = utils.emoji2description(str(self.tweets[item]))
         target = self.targets[item]
 
         tokens = self.tokenizer.tokenize(tweet)
@@ -251,10 +251,10 @@ if __name__ == "__main__":
         # history['val_loss'].append(val_loss)
 
         if val_acc > best_accuracy:
-            torch.save(decoder.state_dict(), 'best_model_state.bin')
+            torch.save(decoder.state_dict(), 'best_e2v_model.pt')
             best_accuracy = val_acc
 
-    decoder.load_state_dict(torch.load('best_model_state.bin'))
+        decoder.load_state_dict(torch.load('best_e2v_model.pt'))
     test_acc, test_loss =eval_model(decoder, test_data_loader,loss_fn,
             device,
             len(X_test))

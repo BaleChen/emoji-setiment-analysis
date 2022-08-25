@@ -5,12 +5,14 @@ import torch.nn as nn
 import torch.nn.functional as F
 import nltk.tokenize as tk
 import gensim as gsm
+import emoji
 from tqdm import tqdm
 from torch.utils.data import TensorDataset, DataLoader, Dataset
 from sklearn.model_selection import train_test_split
 from transformers import AutoTokenizer, AutoModel
 import random
 import utils
+import sys
 
 # Setting random seed for result reproduction
 SEED = 2022
@@ -22,17 +24,18 @@ torch.manual_seed(SEED)
 
 class TweetDataset(Dataset):
 
-    def __init__(self, tweets, targets, tokenizer, max_len):
+    def __init__(self, tweets, targets, tokenizer, max_len, method=utils.identity):
         self.tweets = tweets
         self.targets = targets
         self.tokenizer = tokenizer
         self.max_len = max_len
+        self.method = method
 
     def __len__(self):
         return len(self.tweets)
 
     def __getitem__(self, item):
-        tweets = utils.remove_emojis(str(self.tweets[item]))
+        tweets = self.method(str(self.tweets[item]))
         target = self.targets[item]
 
         encoding = self.tokenizer.encode_plus(
@@ -53,12 +56,13 @@ class TweetDataset(Dataset):
         }
 
 
-def create_data_loader(X, y, tokenizer, max_len, batch_size):
+def create_data_loader(X, y, tokenizer, max_len, batch_size, method):
     ds = TweetDataset(
     tweets=X,
     targets=y,
     tokenizer=tokenizer,
-    max_len=max_len
+    max_len=max_len,
+    method=method
     )
 
     return DataLoader(
@@ -169,6 +173,23 @@ def eval_model(model, data_loader, loss_fn, device, n_examples):
     # return nn.functional.cosine_similarity(output_all, target_all, dim=0), np.mean(losses)
 
 if __name__ == "__main__":
+    # Get the BERT version and emoji-incorporating method
+    bert_version = sys.argv[1]
+    method_case = sys.argv[2]
+
+    if method_case == 'rm':
+        method = utils.clean_emojis
+    elif method_case == 'dir':
+        method = utils.identity
+    elif method_case == 'emoji2desc':
+        method = utils.emoji2description
+    elif method_case == 'concat-desc':
+        method = utils.emoji2concat_description
+    elif method_case == 'concat-emoji':
+        method = utils.emoji2concat_emoji
+    else:
+        raise Exception('Invaild method to incorporating emojis. Available methods are: rm, dir, emoji2desc, concat-desc')
+
     # Reading data and pretrained embeddings
     data = pd.read_excel('Data/emoji2vec_data/emoji2vec_train.xlsx')[['content', 'label']]
     test = pd.read_excel('Data/emoji2vec_data/emoji2vec_test.xlsx')[['content', 'label']]
@@ -188,8 +209,8 @@ if __name__ == "__main__":
 
     # Load the BERT model
 
-    tokenizer = AutoTokenizer.from_pretrained('roberta-base')
-    bert = AutoModel.from_pretrained('roberta-base')
+    tokenizer = AutoTokenizer.from_pretrained(bert_version)
+    bert = AutoModel.from_pretrained(bert_version)
 
     # Create data loader
     # TweetTknzr = tk.TweetTokenizer(preserve_case=False, reduce_len=True, strip_handles=True)
@@ -197,9 +218,9 @@ if __name__ == "__main__":
     MAX_LEN = 256
     BATCH_SIZE = 64
 
-    train_data_loader = create_data_loader(X_train, y_train, tokenizer, MAX_LEN, BATCH_SIZE)
-    val_data_loader = create_data_loader(X_val, y_val, tokenizer, MAX_LEN, BATCH_SIZE)
-    test_data_loader = create_data_loader(X_test, y_test, tokenizer,  MAX_LEN, BATCH_SIZE)
+    train_data_loader = create_data_loader(X_train, y_train, tokenizer, MAX_LEN, BATCH_SIZE, method)
+    val_data_loader = create_data_loader(X_val, y_val, tokenizer, MAX_LEN, BATCH_SIZE, method)
+    test_data_loader = create_data_loader(X_test, y_test, tokenizer,  MAX_LEN, BATCH_SIZE, method)
     # Testing code for data loader
 
     # dataiter = iter(train_data_loader)
@@ -209,7 +230,7 @@ if __name__ == "__main__":
     # Set up the training hyperparams and the model
     hidden_dim = 512
     bidirectional = True
-    EPOCHS = 15
+    EPOCHS = int(sys.argv[3])
     lr = 0.001
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     print("You are training on", device)
@@ -270,10 +291,10 @@ if __name__ == "__main__":
         # history['val_loss'].append(val_loss)
 
         if val_acc > best_accuracy:
-            torch.save(decoder.state_dict(), 'best_model_state.bin')
+            torch.save(decoder.state_dict(), f'best-models/{bert_version.split("/")[-1]}-{method_case}.pt')
             best_accuracy = val_acc
 
-    decoder.load_state_dict(torch.load('best_model_state.bin'))
+    decoder.load_state_dict(torch.load(f'best-models/{bert_version.split("/")[-1]}-{method_case}.pt'))
     test_acc, test_loss = eval_model(decoder, test_data_loader,loss_fn,
             device,
             len(X_test))

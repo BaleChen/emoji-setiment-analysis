@@ -50,6 +50,13 @@ def emoji2concat_description(text):
         ret += ' ' + this_desc
     return ret
 
+def emoji2concat_emoji(text):
+    emoji_list = emoji.emoji_list(text)
+    ret = emoji.replace_emoji(text, replace='').strip()
+    for json in emoji_list:
+        this_emoji = json['emoji']
+        ret += ' ' + this_emoji
+    return ret
 
 def extract_emojis(text):
     emoji_list = emoji.emoji_list(text)
@@ -65,5 +72,8 @@ def keep_only_emojis(data):
     cnt = data['content'].apply(emoji.emoji_count)
     return data[cnt >= 1]
 
-def remove_emojis(text):
-    return re.sub('[^a-z0-9<>]', '', text)
+def clean_emojis(text):
+    return emoji.replace_emoji(text, replace='')
+
+def identity(text):
+    return text
