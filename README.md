@@ -10,7 +10,7 @@ The SemEval-2015 data is the [**SemEval-2015 Task 11: Sentiment Analysis of Figu
 
 ## Report
 
-As a form of dissemination of knowledge, the research work and findings are presented in from of an academic report. Please refer to the "Report.pdf" file to see the complete paper. If you want to understand the main idea of this project, I suggest to read it first!
+As a form of dissemination of knowledge, the research work and findings are presented in from of an academic report. Please refer to the `Report.pdf` file to see the complete paper. If you want to understand the main idea of this project, I suggest to read it first!
 
 ## Scripts
 
