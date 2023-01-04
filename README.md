@@ -4,7 +4,7 @@ Reseach Project by Bale Chen from New York University Shanghai. If interested, p
 
 ## Data
 
-The emoji2vec twitter sentiment analysis data is originally from the paper [**emoji2vec: Learning Emoji Representations from their Description**](https://arxiv.org/pdf/1609.08359.pdf) by Ben Eisner, Tim Rocktäschel, Isabelle Augenstein, Matko Bošnjak, and Sebastian Riedel. Their repository can be accessed [here](https://github.com/uclnlp/emoji2vec).
+The emoji2vec twitter sentiment analysis data is originally from the paper [**Sentiment of Emojis**](https://doi.org/10.1371/journal.pone.0144296) by Petra Kralj Novak, Jasmina Smailović, Borut Sluban, Igor Mozetič. Due to convenience, I access the data from another research project, `emoji2vec`,  that uses their data. Their repository can be accessed [here](https://github.com/uclnlp/emoji2vec).
 
 The SemEval-2015 data is the [**SemEval-2015 Task 11: Sentiment Analysis of Figurative Language in Twitter**](https://aclanthology.org/S15-2080/) by Aniruddha Ghosh, Guofu Li, Tony Veale, Paolo Rosso, Ekaterina Shutova, John Barnden, and Antonio Reyes. Please refer to their original paper for more information. Note that many tweets have perished or been deleted. Thanks to the SemEval-15 organizers who created a Twitter bot and posted those tweets again to avoid perishing.
 
