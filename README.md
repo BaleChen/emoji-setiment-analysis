@@ -8,6 +8,8 @@ The emoji2vec twitter sentiment analysis data is originally from the paper [**Se
 
 The SemEval-2015 data is the [**SemEval-2015 Task 11: Sentiment Analysis of Figurative Language in Twitter**](https://aclanthology.org/S15-2080/) by Aniruddha Ghosh, Guofu Li, Tony Veale, Paolo Rosso, Ekaterina Shutova, John Barnden, and Antonio Reyes. Please refer to their original paper for more information. Note that many tweets have perished or been deleted. Thanks to the SemEval-15 organizers who created a Twitter bot and posted those tweets again to avoid perishing.
 
+> Note that this SemEval-2015 dataset is deprecated on Jan 29, 2023 and is no longer available in this repo. Please contact me if you have any question regarding this dataset. 
+
 ## Report
 
 As a form of dissemination of knowledge, the research work and findings are presented in from of an academic report. Please refer to the `Report.pdf` file to see the complete paper. If you want to understand the main idea of this project, I suggest to read it first!
