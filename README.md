@@ -1,6 +1,6 @@
 # Trash or Treasure: How to Utilize Emojis in Social Media Sentiment Classification
 
-Reseach Project by Bale Chen from New York University Shanghai. If interested, please contact via email (bale.chen@nyu.edu).
+Reseach Project by Bale Chen from New York University Shanghai. If interested, please contact via email (bale[dot]chen[at]nyu[dot]edu).
 
 ## Data
 
